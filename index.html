@@ -1420,7 +1420,7 @@ body::before {
       <input type="password" id="editorPwInput" placeholder="Staff password" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:10px;padding:10px 16px;color:var(--text);font-family:'Nunito',sans-serif;font-size:0.92rem;width:210px;text-align:center;outline:none;margin-bottom:10px;display:block;margin:0 auto 10px;">
       <div id="editorPwError" style="color:var(--red);font-size:0.76rem;min-height:16px;margin-bottom:8px;"></div>
       <button onclick="unlockEditor()" style="background:linear-gradient(135deg,var(--accent),#5b21b6);color:white;border:none;padding:10px 26px;border-radius:10px;font-family:'Cinzel',serif;font-size:0.8rem;cursor:pointer;letter-spacing:1px;">Enter Faculty Wing</button>
-      <div style="font-size:0.7rem;color:var(--muted);margin-top:14px;">Default password: <strong style="color:var(--gold)">arcane123</strong></div>
+      <div style="font-size:0.7rem;color:var(--muted);margin-top:14px;">Contact your Academy administrator for access.</div>
     </div>
 
     <!-- Faculty workspace -->
@@ -2647,7 +2647,20 @@ let pendingWrongAnswers = [];
 let sessionStart = Date.now();
 let sortIdx = 0;
 let sortScores = { solarveil:0, voidweave:0, tidecrest:0, ironveil:0 };
-let editorPassword = 'arcane123';
+let editorPassword = 'arcane123'; // fallback only — real password loaded from Supabase on init
+
+async function loadConfigFromSupabase() {
+  try {
+    const res = await fetch(
+      'https://onevueekevfpniopuyhj.supabase.co/functions/v1/get-config',
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+    );
+    const data = await res.json();
+    if (data.faculty_password) editorPassword = data.faculty_password;
+  } catch(e) {
+    console.warn('Could not load remote config, using defaults:', e.message);
+  }
+}
 let editorUnlocked = false;
 let questionBlockCount = 0;
 let studyMode = false;          // true = Study Mode (all questions, repeat wrong)
@@ -2693,6 +2706,8 @@ document.getElementById('nameInput').addEventListener('keydown', e => { if(e.key
 document.addEventListener('DOMContentLoaded', () => {
   const li = document.getElementById('loginEmailInput');
   if (li) li.addEventListener('keydown', e => { if(e.key==='Enter') loginWithEmail(); });
+  // Load remote config (faculty password) — fire and forget, fallback handles failure
+  loadConfigFromSupabase();
 });
 
 function showScreen(screen) {
@@ -4823,9 +4838,9 @@ function closeChallenge() {
 //    1. Go to: https://aistudio.google.com
 //    2. Click "Get API Key" → Create new key
 //    3. Paste it below
-const GEMINI_API_KEY = 'AIzaSyD557xMoT72WM-WTroDcGmP9KN9VhqvAmo';
-// gemini-2.5-flash is the current free-tier model for new API keys (2.0-flash deprecated Mar 2026)
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_API_KEY = ''; // Removed — key lives in Supabase Edge Function secrets
+const GEMINI_PROXY_URL = 'https://onevueekevfpniopuyhj.supabase.co/functions/v1/gemini-proxy';
+const GEMINI_URL = GEMINI_PROXY_URL; // kept for reference, not used directly
 
 // ── AI REQUEST QUEUE — prevents simultaneous calls hitting rate limits ──
 let aiQueue = Promise.resolve();
@@ -4943,37 +4958,29 @@ async function fetchWithRetry(url, options, maxRetries = 3) {
 }
 
 async function callAI(messages, systemPrompt, maxTokens = 400) {
-  // Build Gemini contents array — system prompt becomes first user turn
-  const contents = [
-    { role: 'user', parts: [{ text: systemPrompt + '\n\n---\n\nNow begin.' }] },
-    { role: 'model', parts: [{ text: 'Understood. I am ready.' }] },
-    ...messages.map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }]
-    }))
-  ];
-
   try {
-    const response = await fetchWithRetry(GEMINI_URL, {
+    const response = await fetchWithRetry(GEMINI_PROXY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents,
-        generationConfig: { maxOutputTokens: maxTokens, temperature: 0.85 }
-      })
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      },
+      body: JSON.stringify({ messages, systemPrompt, maxTokens })
     });
+
     const data = await response.json();
-    if (!response.ok) {
-      const errMsg = data.error?.message || `HTTP ${response.status}`;
-      console.warn('Gemini API error (after retries):', errMsg);
+
+    if (!response.ok || data.error) {
+      const errMsg = data.error || `HTTP ${response.status}`;
+      console.warn('Gemini proxy error (after retries):', errMsg);
       throw new Error(errMsg);
     }
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    if (!text) {
-      const reason = data.candidates?.[0]?.finishReason || 'empty response';
-      console.warn('Gemini empty response:', reason);
-    }
+
+    const text = data.text || '';
+    if (!text) console.warn('Gemini proxy returned empty response');
     return text;
+
   } catch(e) {
     console.warn('callAI failed after retries:', e.message);
     throw e;
@@ -5826,15 +5833,8 @@ async function loginAsFaculty() {
   if (!email || !email.includes('@')) { errEl.textContent = 'Enter the scholar\'s email.'; return; }
   if (!pw) { errEl.textContent = 'Enter the Faculty Wing password.'; return; }
 
-  // Load stored password to verify
-  let storedPw = 'arcane123';
-  try {
-    const savedPw = localStorage.getItem('qa_password');
-    if (savedPw) storedPw = savedPw;
-    // Also check cloud
-    const data = await sbRequest('GET', `players?email=eq.${encodeURIComponent(email)}&select=state`);
-    // We store editor password in localStorage only — check that
-  } catch(e) {}
+  // Use password loaded from Supabase config (falls back to default if offline)
+  const storedPw = editorPassword;
 
   if (pw !== storedPw) { errEl.textContent = 'Incorrect password.'; document.getElementById('facultyPwInput').value = ''; return; }
 
