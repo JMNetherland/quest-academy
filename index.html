@@ -4075,7 +4075,7 @@ async function sendPalMessage() {
   document.getElementById('palChatMessages').appendChild(loadDiv);
   document.getElementById('palChatMessages').scrollTop = 9999;
   try {
-    const reply = await callPalAI(text, null, 200);
+    const reply = await callPalAI(text, null, 280);
     document.getElementById('palTyping')?.remove();
     appendPalMsg('hm', reply);
   } catch(e) {
@@ -4096,7 +4096,7 @@ async function sendPalPanelMessage() {
   document.getElementById('palChatMessages').appendChild(loadDiv);
   document.getElementById('palChatMessages').scrollTop = 9999;
   try {
-    const reply = await callPalAI(text, null, 220);
+    const reply = await callPalAI(text, null, 280);
     document.getElementById('palTyping2')?.remove();
     appendPalMsg('hm', reply);
   } catch(e) {
@@ -4823,7 +4823,7 @@ function closeChallenge() {
 //    1. Go to: https://aistudio.google.com
 //    2. Click "Get API Key" → Create new key
 //    3. Paste it below
-const GEMINI_API_KEY = 'AIzaSyA6SJeI1bfqaIzHKXqgzFO15pbuOKDrWrk';
+const GEMINI_API_KEY = 'AIzaSyD557xMoT72WM-WTroDcGmP9KN9VhqvAmo';
 // gemini-2.5-flash is the current free-tier model for new API keys (2.0-flash deprecated Mar 2026)
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
@@ -4993,7 +4993,7 @@ Write a short, vivid 3-4 sentence story narration describing what just happened 
 
   return await callAI([{ role: 'user', content: prompt }],
     `You are the narrator of Quest Academy — a fantasy world where studying Physical Science unlocks real magical power. Write in vivid, immersive third-person prose. Keep it to 3-4 sentences. Reference the scholar's name, house, Pal, and the science subject just mastered. Make it feel earned and exciting.`,
-    250);
+    350);
 }
 
 // ── FEATURE 2: LIVING STORY CHAPTERS ───────────────────────────────
@@ -5014,7 +5014,7 @@ async function generateAIStoryChapter(chapterNum, quest) {
 
   return await callAI([{ role: 'user', content: prompt }],
     `You are the author of the Quest Academy saga — a fantasy story where mastering Physical Science is literally magical. Write in rich, immersive third-person narrative prose. Reference the scholar by name. Weave in their house, Pal, and the actual science topic as story elements. 4-5 sentences, vivid and personal.`,
-    300);
+    450);
 }
 
 // ── FEATURE 3: AI DISPATCH WRITER ──────────────────────────────────
@@ -5064,7 +5064,7 @@ async function sendHeadmasterGreeting() {
       const greeting = await callAI(
         [{ role: 'user', content: 'Greet this scholar for the first time today.' }],
         headmasterSystemPrompt(),
-        180
+        400
       );
       hideTypingIndicator();
       appendChatMessage('hm', greeting);
@@ -5086,7 +5086,7 @@ async function sendChatMessage() {
 
   showTypingIndicator();
   try {
-    const reply = await callAI(chatHistory, headmasterSystemPrompt(), 350);
+    const reply = await callAI(chatHistory, headmasterSystemPrompt(), 600);
     hideTypingIndicator();
     appendChatMessage('hm', reply);
     chatHistory.push({ role: 'assistant', content: reply });
